@@ -98,7 +98,7 @@ class LabelWriter (object):
          return self.ep_in.read (64, timeout=3000)
 
 
-   def sendrecv_wificmd (self, cmd, extra_data=b"", expect_answer=True):
+   def sendrecv_objcmd (self, cmd, extra_data=b"", expect_answer=True):
       outdata = struct.pack ("<BBBI", 0x1b, ord ("W"),
                              cmd, len (extra_data) + 7)
       outdata += extra_data
@@ -119,7 +119,7 @@ class LabelWriter (object):
 
 
    def get_network_state (self):
-      reply = self.sendrecv_wificmd (0x0c)
+      reply = self.sendrecv_objcmd (0x0c)
 
       return  NetworkStatus.from_buffer_copy (reply[3])
 
@@ -138,7 +138,7 @@ class LabelWriter (object):
 
 
    def start_wifi_scan (self):
-      self.sendrecv_wificmd (0x00)
+      self.sendrecv_objcmd (0x00)
 
 
 
@@ -161,10 +161,10 @@ if __name__ == '__main__':
       time.sleep (1)
    print (" done.\n");
 
-   ret = lw.sendrecv_wificmd (0x08, expect_answer=True)
+   ret = lw.sendrecv_objcmd (0x08, expect_answer=True)
    print (ret)
 
-   ret = lw.sendrecv_wificmd (0x04, b"\x00" * 57, expect_answer=True)
+   ret = lw.sendrecv_objcmd (0x04, b"\x00" * 57, expect_answer=True)
    print (ret)
 
    print ("Scanning for Wifi Networks: ", end="", flush=True)
@@ -179,7 +179,7 @@ if __name__ == '__main__':
    print (" done.\n");
 
    print ("Querying scanned networks")
-   ret = lw.sendrecv_wificmd (0x01, expect_answer=True)
+   ret = lw.sendrecv_objcmd (0x01, expect_answer=True)
 
    networks = []
 
@@ -222,11 +222,11 @@ if __name__ == '__main__':
    data += bytes (0xc0 - len (data))
 
    print ("Configuring Wifi")
-   ret = lw.sendrecv_wificmd (0x02, data, expect_answer=True)
+   ret = lw.sendrecv_objcmd (0x02, data, expect_answer=True)
    print (ret)
 
    print ("Connecting to Wifi: ", end="", flush=True)
-   ret = lw.sendrecv_wificmd (0x05, bytes (57), expect_answer=True)
+   ret = lw.sendrecv_objcmd (0x05, bytes (57), expect_answer=True)
    print (ret)
 
    while True:
