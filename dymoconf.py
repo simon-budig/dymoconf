@@ -22,6 +22,7 @@ class PrintableLittleEndianStructure (ctypes.LittleEndianStructure):
       s += "]"
       return s
 
+
 class NetworkStatus (PrintableLittleEndianStructure):
    # The response to the ESC W <0x0c> command
    # (response ID <0x8c>)
@@ -90,41 +91,43 @@ class ObjResp (PrintableLittleEndianStructure):
 
 class NetworkInfo (PrintableLittleEndianStructure):
    _fields_ = [
-      ("ap",      ctypes.c_uint8 * 6),
-      ("channel", ctypes.c_uint8),
-      ("DUMMY1",  ctypes.c_uint8 * 2),
-      ("enc",     ctypes.c_uint8 * 2),
-      ("DUMMY2",  ctypes.c_uint8),
-      ("essid",   ctypes.c_uint8 * 32),
+      ("ap",       ctypes.c_uint8 * 6),
+      ("channel",  ctypes.c_uint8),
+      ("UNKNOWN1", ctypes.c_uint8 * 2),
+      ("enc",      ctypes.c_uint8 * 2),
+      ("UNKNOWN2", ctypes.c_uint8),
+      ("essid",    ctypes.c_uint8 * 32),
    ]
 
 class LabelWriter (object):
    def __init__ (self):
-      self.dev = usb.core.find (idVendor=0x0922,
-                                idProduct=0x1007,
-                                find_all=True)
+      self.dev = usb.core.find (idVendor  = 0x0922,
+                                idProduct = 0x1007)
 
       if not self.dev:
          raise ValueError ("LabelWriter not found")
 
-      for d in self.dev:
-         cfg = d.get_active_configuration ()
-         if cfg is None:
-            d.set_configuration ()
-         for cfg in d:
-            intf = usb.util.find_descriptor (cfg, find_all=True, bInterfaceClass=3)
-            for i in intf:
-               if d.is_kernel_driver_active (i.bInterfaceNumber):
-                  d.detach_kernel_driver (i.bInterfaceNumber)
-               print (i)
-               for ep in i:
-                  print (" - " + repr (ep))
+      d = self.dev
 
-               self.ep_in = usb.util.find_descriptor (i, custom_match = (lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_IN))
-               self.ep_out = usb.util.find_descriptor (i, custom_match = (lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_OUT))
+      self.serialno = usb.util.get_string (d, d.iSerialNumber)
 
-               usb.util.claim_interface (d, i.bInterfaceNumber)
+      cfg = d.get_active_configuration ()
+      if cfg is None:
+         d.set_configuration ()
 
+      for cfg in d:
+         intf = usb.util.find_descriptor (cfg, find_all=True, bInterfaceClass=3)
+         for i in intf:
+            if d.is_kernel_driver_active (i.bInterfaceNumber):
+               d.detach_kernel_driver (i.bInterfaceNumber)
+            # print (i)
+            # for ep in i:
+            #    print (" - " + repr (ep))
+
+            self.ep_in = usb.util.find_descriptor (i, custom_match = (lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_IN))
+            self.ep_out = usb.util.find_descriptor (i, custom_match = (lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_OUT))
+
+            usb.util.claim_interface (d, i.bInterfaceNumber)
 
    def sendrecv (self, outdata=None, expect_answer=False):
       if outdata != None:
@@ -140,7 +143,7 @@ class LabelWriter (object):
             outdata = outdata[64:]
 
       if expect_answer:
-         return self.ep_in.read (64, timeout=3000)
+         return bytes (self.ep_in.read (64, timeout=3000))
 
 
    def sendrecv_objcmd (self, cmd, extra_data=b"", expect_answer=True):
@@ -166,6 +169,11 @@ class LabelWriter (object):
       return  NetworkStatus.from_buffer_copy (reply[3])
 
 
+   # Object 0x08 contains at least the MAC address of the wifi interface
+   def get_interface_info (self):
+      ret = lw.sendrecv_objcmd (0x08, expect_answer=True)
+      return (ret[3][4:10])
+
    def get_system_state (self):
       reply = self.sendrecv ("\x1bA", True)
 
@@ -180,26 +188,55 @@ class LabelWriter (object):
 
 
    def set_network_config (self, network):
-      data  = b"\x00" + bytes (network.enc) + bytes (network.ap) + bytes (network.essid)
-      data += bytes (57 - len (data))
+      data  = b"\x00"
+      data += bytes (network.enc)
+      data += bytes (network.ap)
+      data += bytes (network.essid)
+      data += bytes (57 - len (data))   # padding to the 1st hid package
       data += bytes (pw, "utf-8")
-      data += bytes (0xb9 - len (data))
+      data += bytes (0xb9 - len (data)) # padding to the 3rd hid package
 
-      print ("Configuring Wifi")
-      ret = lw.sendrecv_objcmd (0x02, data, expect_answer=True)
-      print (ret)
+      ret = self.sendrecv_objcmd (0x02, data, expect_answer=True)
+      # print (ret)
+      # what does it return?
+
+
+   # actually it is not clear yet what object 0x05 does.
+   def set_network_active (self):
+      return self.sendrecv_objcmd (0x05, bytes (57), expect_answer=True)
 
 
    def start_wifi_scan (self):
       self.sendrecv_objcmd (0x00)
 
 
+   def get_scanned_networks (self):
+      ret = self.sendrecv_objcmd (0x01, expect_answer=True)
+
+      networks = []
+
+      data = ret[3]
+      num_networks = data[0]
+      data = bytes (data[60:])
+      while data:
+         network = NetworkInfo.from_buffer_copy (data)
+         networks.append (network)
+         data = data[64:]
+
+      return networks
+
+
 
 if __name__ == '__main__':
-   lw = LabelWriter ()
+   try:
+      lw = LabelWriter ()
+   except ValueError:
+      print ("No LabelWriter found")
+      sys.exit (-1)
 
+   print ("Connected to LabelWriter (serial no. %s)" % lw.serialno)
    r = lw.get_system_state ()
-   print (r)
+   # print (r)
 
    print ("Starting up Wifi: ", end="", flush=True)
    lw.set_enable_wifi (True)
@@ -216,8 +253,8 @@ if __name__ == '__main__':
       time.sleep (1)
    print (" done.\n");
 
- # ret = lw.sendrecv_objcmd (0x08, expect_answer=True)
- # print (ret)
+   mac_addr = lw.get_interface_info ()
+   print ("MAC-Address: " + "-".join (["%02x" % c for c in mac_addr]))
 
  # ret = lw.sendrecv_objcmd (0x04, b"\x00" * 57, expect_answer=True)
  # print (ret)
@@ -233,27 +270,14 @@ if __name__ == '__main__':
       time.sleep (1)
    print (" done.\n");
 
-   print ("Querying scanned networks")
-   ret = lw.sendrecv_objcmd (0x01, expect_answer=True)
-
-   networks = []
-
-   data = ret[3]
-   num_networks = data[0]
-   data = bytes (data[60:])
-   while data:
-      print (data)
-      network = NetworkInfo.from_buffer_copy (data)
-      networks.append (network)
-      data = data[64:]
-
-   print ("\n------------")
+   print ("Networks found:")
+   networks = lw.get_scanned_networks ()
 
    idx = 1
    for n in networks:
       print ("%2d) %s (%s, Ch: %d, Enc: (%d, %d))" %
              (idx,
-              "-".join ([chr (c) for c in n.essid]),
+              "".join ([chr (c) for c in n.essid]),
               ":".join (["%02x" % c for c in n.ap]),
               n.channel,
               n.enc[0], n.enc[1]))
@@ -261,15 +285,15 @@ if __name__ == '__main__':
 
    nw = -1
 
+   print ("\nEnter target network number:")
    while nw < 0 or nw >= len (networks):
-      nw = int (input ("> ")) - 1
-   pw = input ("PW: ")
+      nw = int (input ("--> ")) - 1
+   pw = input ("Password: ")
 
+   # print ("Configuring Wifi")
    lw.set_network_config (networks[nw])
 
    print ("Connecting to Wifi: ", end="", flush=True)
-   ret = lw.sendrecv_objcmd (0x05, bytes (57), expect_answer=True)
-   print (ret)
 
    while True:
       r = lw.get_network_state ()
@@ -281,3 +305,4 @@ if __name__ == '__main__':
       print (".", end="", flush=True)
       time.sleep (1)
    print (" done.\n");
+
