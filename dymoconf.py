@@ -1,7 +1,17 @@
 #!/usr/bin/env python3
 
+# dymoconf.py
+#
+# a small utility to scan and configure networks for the
+# DYMO LabelManager Wireless PnP
+#
+# (c) 2017 Simon Budig <simon@budig.de>
+#
+# Thanks to the DYMO Software Development team
+# for providing insight into the data structures being handed around.
+
 import sys, time
-import ctypes, struct
+import ctypes
 import usb
 
 class PrintableLittleEndianStructure (ctypes.LittleEndianStructure):
@@ -13,6 +23,8 @@ class PrintableLittleEndianStructure (ctypes.LittleEndianStructure):
       return s
 
 class NetworkStatus (PrintableLittleEndianStructure):
+   # The response to the ESC W <0x0c> command
+   # (response ID <0x8c>)
    _fields_ = [
       ("general_status",           ctypes.c_uint8, 3),
       ("wifi_scan_status",         ctypes.c_uint8, 3),
@@ -33,6 +45,7 @@ class NetworkStatus (PrintableLittleEndianStructure):
 
 
 class SystemStatus (PrintableLittleEndianStructure):
+   # The response to the ESC A command
    _fields_ = [
       ("reserved",             ctypes.c_uint8, 2),
       ("tape_jam",             ctypes.c_uint8, 1),
@@ -54,9 +67,42 @@ class SystemStatus (PrintableLittleEndianStructure):
    ]
 
 
+class ObjCmd (PrintableLittleEndianStructure):
+   # the request for an ESC W command
+   _pack_ = 1
+   _fields_ = [
+      ("escape", ctypes.c_uint8),
+      ("W",      ctypes.c_uint8),
+      ("obj_id", ctypes.c_uint8),
+      ("length", ctypes.c_uint32),
+   ]
+
+
+class ObjResp (PrintableLittleEndianStructure):
+   # the response to an ESC W command
+   _pack_ = 1
+   _fields_ = [
+      ("response_id", ctypes.c_uint8),
+      ("length",      ctypes.c_uint16),
+      ("status",      ctypes.c_uint8),
+   ]
+
+
+class NetworkInfo (PrintableLittleEndianStructure):
+   _fields_ = [
+      ("ap",      ctypes.c_uint8 * 6),
+      ("channel", ctypes.c_uint8),
+      ("DUMMY1",  ctypes.c_uint8 * 2),
+      ("enc",     ctypes.c_uint8 * 2),
+      ("DUMMY2",  ctypes.c_uint8),
+      ("essid",   ctypes.c_uint8 * 32),
+   ]
+
 class LabelWriter (object):
    def __init__ (self):
-      self.dev = usb.core.find (idVendor=0x0922, idProduct=0x1007, find_all=True)
+      self.dev = usb.core.find (idVendor=0x0922,
+                                idProduct=0x1007,
+                                find_all=True)
 
       if not self.dev:
          raise ValueError ("LabelWriter not found")
@@ -69,7 +115,6 @@ class LabelWriter (object):
             intf = usb.util.find_descriptor (cfg, find_all=True, bInterfaceClass=3)
             for i in intf:
                if d.is_kernel_driver_active (i.bInterfaceNumber):
-                  print ("detach")
                   d.detach_kernel_driver (i.bInterfaceNumber)
                print (i)
                for ep in i:
@@ -84,11 +129,11 @@ class LabelWriter (object):
    def sendrecv (self, outdata=None, expect_answer=False):
       if outdata != None:
          # discard pending data
-         while True:
-            try:
+         try:
+            while True:
                self.ep_in.read (64, timeout=10)
-            except:
-               break
+         except usb.core.USBError:
+            pass
          # print ("--> %r" % outdata)
          while outdata:
             self.ep_out.write (outdata[:64])
@@ -99,15 +144,12 @@ class LabelWriter (object):
 
 
    def sendrecv_objcmd (self, cmd, extra_data=b"", expect_answer=True):
-      outdata = struct.pack ("<BBBI", 0x1b, ord ("W"),
-                             cmd, len (extra_data) + 7)
+      outdata = bytes (ObjCmd (0x1b, ord ("W"), cmd, len (extra_data) + 7))
       outdata += extra_data
       data = self.sendrecv (outdata, expect_answer)
       if expect_answer:
-         response_id = data[0]
-         length = data[1] + data[2] * 256
-         status = data[3]
-         target_length = length - len (data)
+         resp = ObjResp.from_buffer_copy (data)
+         target_length = resp.length - len (data)
          data = data[4:]
 
          while target_length > 0:
@@ -115,7 +157,7 @@ class LabelWriter (object):
             data += ret
             target_length -= len (ret)
 
-         return (response_id, length, status, data)
+         return (resp.response_id, resp.length, resp.status, data)
 
 
    def get_network_state (self):
@@ -130,11 +172,22 @@ class LabelWriter (object):
       return SystemStatus.from_buffer_copy (reply)
 
 
-   def switch_wifi (self, enable):
+   def set_enable_wifi (self, enable):
       if (enable):
          self.sendrecv ("\x1bI\x01")
       else:
          self.sendrecv ("\x1bI\x00")
+
+
+   def set_network_config (self, network):
+      data  = b"\x00" + bytes (network.enc) + bytes (network.ap) + bytes (network.essid)
+      data += bytes (57 - len (data))
+      data += bytes (pw, "utf-8")
+      data += bytes (0xb9 - len (data))
+
+      print ("Configuring Wifi")
+      ret = lw.sendrecv_objcmd (0x02, data, expect_answer=True)
+      print (ret)
 
 
    def start_wifi_scan (self):
@@ -149,7 +202,9 @@ if __name__ == '__main__':
    print (r)
 
    print ("Starting up Wifi: ", end="", flush=True)
-   lw.switch_wifi (True)
+   lw.set_enable_wifi (True)
+   # needs some time to settle - otherwise ESC W <0x0c> might not respond
+   time.sleep (1)
 
    while True:
       r = lw.get_network_state ()
@@ -161,11 +216,11 @@ if __name__ == '__main__':
       time.sleep (1)
    print (" done.\n");
 
-   ret = lw.sendrecv_objcmd (0x08, expect_answer=True)
-   print (ret)
+ # ret = lw.sendrecv_objcmd (0x08, expect_answer=True)
+ # print (ret)
 
-   ret = lw.sendrecv_objcmd (0x04, b"\x00" * 57, expect_answer=True)
-   print (ret)
+ # ret = lw.sendrecv_objcmd (0x04, b"\x00" * 57, expect_answer=True)
+ # print (ret)
 
    print ("Scanning for Wifi Networks: ", end="", flush=True)
    lw.start_wifi_scan ();
@@ -186,27 +241,23 @@ if __name__ == '__main__':
    data = ret[3]
    num_networks = data[0]
    data = bytes (data[60:])
-   print (data)
-   for idx in range (num_networks):
-      ap      = data[:6]
-      managed = data[6]
-      enc     = data[9:11]
-      name    = data[12:].split (b"\x00")[0]
-      networks.append ((ap, managed, enc, name))
-      data = data[64:]
+   while data:
       print (data)
+      network = NetworkInfo.from_buffer_copy (data)
+      networks.append (network)
+      data = data[64:]
 
    print ("\n------------")
 
-   for idx in range (len (networks)):
-      n = networks[idx]
-
+   idx = 1
+   for n in networks:
       print ("%2d) %s (%s, Ch: %d, Enc: (%d, %d))" %
-             (idx + 1,
-              "".join ([chr (c) for c in n[3]]),
-              ":".join (["%02x" % c for c in n[0]]),
-              n[1],
-              n[2][0], n[2][1]))
+             (idx,
+              "-".join ([chr (c) for c in n.essid]),
+              ":".join (["%02x" % c for c in n.ap]),
+              n.channel,
+              n.enc[0], n.enc[1]))
+      idx += 1
 
    nw = -1
 
@@ -214,16 +265,7 @@ if __name__ == '__main__':
       nw = int (input ("> ")) - 1
    pw = input ("PW: ")
 
-   n = networks[nw]
-
-   data  = b"\x00" + n[2] + n[0] + n[3]
-   data += bytes (57 - len (data))
-   data += bytes (pw, "utf-8")
-   data += bytes (0xc0 - len (data))
-
-   print ("Configuring Wifi")
-   ret = lw.sendrecv_objcmd (0x02, data, expect_answer=True)
-   print (ret)
+   lw.set_network_config (networks[nw])
 
    print ("Connecting to Wifi: ", end="", flush=True)
    ret = lw.sendrecv_objcmd (0x05, bytes (57), expect_answer=True)
@@ -239,4 +281,3 @@ if __name__ == '__main__':
       print (".", end="", flush=True)
       time.sleep (1)
    print (" done.\n");
-
