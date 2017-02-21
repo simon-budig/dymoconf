@@ -99,7 +99,7 @@ class NetworkInfo (PrintableLittleEndianStructure):
       ("essid",    ctypes.c_uint8 * 32),
    ]
 
-class LabelWriter (object):
+class LabelManager (object):
    def __init__ (self):
       # LabelManager PnP has two personalities...
       self.dev = usb.core.find (idVendor  = 0x0922,
@@ -232,12 +232,12 @@ class LabelWriter (object):
 
 if __name__ == '__main__':
    try:
-      lw = LabelWriter ()
+      lw = LabelManager ()
    except ValueError:
-      print ("No LabelWriter found")
+      print ("No LabelManager found")
       sys.exit (-1)
 
-   print ("Connected to LabelWriter (serial no. %s)" % lw.serialno)
+   print ("Connected to LabelManager (serial no. %s)" % lw.serialno)
    r = lw.get_system_state ()
    # print (r)
 
