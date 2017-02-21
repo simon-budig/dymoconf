@@ -51,7 +51,7 @@ These commands are sent to the HID interface of the printer. I have not
 yet tested sending these to the Printer interface (when enabled).
 
 
-### <esc> I _n_    Set Wifi Interface Status
+### `<esc> I _n_`    Set Wifi Interface Status
 
 1b 40 ?
 
@@ -64,7 +64,7 @@ This enables or disables the wifi interface. It takes some time to wake
 up, allow a little bit of time (>= 1s) before querying the wifi state.
 
 
-### <esc> Z 0x01
+### `<esc> Z 0x01`
 
 1b 5a 01
 
@@ -73,7 +73,7 @@ printer interface is available in addition to a HID and Mass Storage
 interfaces.
 
 
-### <esc> W _n_ _l1_ _l2_ _l3_ _l4_ _n1_.._nx_
+### `<esc> W _n_ _l1_ _l2_ _l3_ _l4_ _n1_.._nx_`
 
 1b 57 ? ? ? ? ? ? ?
 
