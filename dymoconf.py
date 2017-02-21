@@ -146,7 +146,9 @@ class LabelManager (object):
             outdata = outdata[64:]
 
       if expect_answer:
-         return bytes (self.ep_in.read (64, timeout=3000))
+         indata = bytes (self.ep_in.read (64, timeout=3000))
+         # print ("<-- %r" % indata)
+         return indata
 
 
    def sendrecv_objcmd (self, cmd, extra_data=b"", expect_answer=True):
@@ -163,6 +165,9 @@ class LabelManager (object):
             data += ret
             target_length -= len (ret)
 
+         # print ("Object %02x --> Response %02x (%d bytes)" %
+                  (cmd, resp.response_id, resp.length))
+
          return (resp.response_id, resp.length, resp.status, data)
 
 
@@ -176,6 +181,7 @@ class LabelManager (object):
    def get_interface_info (self):
       ret = lw.sendrecv_objcmd (0x08, expect_answer=True)
       return (ret[3][4:10])
+
 
    def get_system_state (self):
       reply = self.sendrecv ("\x1bA", True)
@@ -259,8 +265,8 @@ if __name__ == '__main__':
    mac_addr = lw.get_interface_info ()
    print ("MAC-Address: " + "-".join (["%02x" % c for c in mac_addr]))
 
- # ret = lw.sendrecv_objcmd (0x04, b"\x00" * 57, expect_answer=True)
- # print (ret)
+   # ret = lw.sendrecv_objcmd (0x04, b"\x00" * 57, expect_answer=True)
+   # print (ret)
 
    print ("Scanning for Wifi Networks: ", end="", flush=True)
    lw.start_wifi_scan ();
