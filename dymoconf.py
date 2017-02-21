@@ -101,11 +101,14 @@ class NetworkInfo (PrintableLittleEndianStructure):
 
 class LabelWriter (object):
    def __init__ (self):
+      # LabelManager PnP has two personalities...
       self.dev = usb.core.find (idVendor  = 0x0922,
-                                idProduct = 0x1007)
-
+                                idProduct = 0x1008)
       if not self.dev:
-         raise ValueError ("LabelWriter not found")
+         self.dev = usb.core.find (idVendor  = 0x0922,
+                                   idProduct = 0x1007)
+         if not self.dev:
+            raise ValueError ("LabelManager not found")
 
       d = self.dev
 
