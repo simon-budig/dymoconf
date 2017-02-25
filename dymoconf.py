@@ -166,7 +166,7 @@ class LabelManager (object):
             target_length -= len (ret)
 
          # print ("Object %02x --> Response %02x (%d bytes)" %
-                  (cmd, resp.response_id, resp.length))
+         #        (cmd, resp.response_id, resp.length))
 
          return (resp.response_id, resp.length, resp.status, data)
 
