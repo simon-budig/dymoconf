@@ -51,7 +51,7 @@ These commands are sent to the HID interface of the printer. I have not
 yet tested sending these to the Printer interface (when enabled).
 
 
-### `<esc> I _n_`    Set Wifi Interface Status
+### `<esc> I`_`n`_    Set Wifi Interface Status
 
 1b 40 ?
 
@@ -64,7 +64,7 @@ This enables or disables the wifi interface. It takes some time to wake
 up, allow a little bit of time (>= 1s) before querying the wifi state.
 
 
-### `<esc> Z 0x01`
+### `<esc> Z 0x01`    Switch USB profile
 
 1b 5a 01
 
@@ -73,7 +73,7 @@ printer interface is available in addition to a HID and Mass Storage
 interfaces.
 
 
-### `<esc> W _n_ _l1_ _l2_ _l3_ _l4_ _n1_.._nx_`
+### `<esc> W _n_ _l1_ _l2_ _l3_ _l4_ _n1_.._nx_`  Send/Query Config Object
 
 1b 57 ? ? ? ? ? ? ?
 
@@ -130,7 +130,7 @@ This seems to be necessary to activate the new network configuration.
 This expects 57 bytes of zeroes as data (i.e. padded to 64 bytes).
 
 
-#### Object 0x08   (TODO) Query Network Interface
+#### Object 0x08   (TODO) Query Network Interface Info
 
 1b 57 08 07 00 00 00
 
@@ -154,6 +154,8 @@ This queries the wifi network status. Response: 0x8c
 
 #### Response 0x84    (TODO)
 
-#### Response 0x8c    Network Status Repsponse
+#### Response 0x88    (TODO) Network Interface Info Response
+
+#### Response 0x8c    Network Status Response
 
 0x8c 0xc0 0x00 <status> <network status>
