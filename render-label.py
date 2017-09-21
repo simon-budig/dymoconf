@@ -28,7 +28,7 @@ def do_print (width, height, data):
 
 
 
-def render_text (text, tapewidth=128, font="Fira Sans Condensed 60"):
+def render_text (text, tapewidth=128, font="Fira Sans Condensed Medium, 60"):
    import math
    import gi
    import cairo, PIL.Image, io
