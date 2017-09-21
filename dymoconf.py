@@ -245,7 +245,7 @@ if __name__ == '__main__':
 
    print ("Connected to LabelManager (serial no. %s)" % lw.serialno)
    r = lw.get_system_state ()
-   # print (r)
+   print (r)
 
    print ("Starting up Wifi: ", end="", flush=True)
    lw.set_enable_wifi (True)
